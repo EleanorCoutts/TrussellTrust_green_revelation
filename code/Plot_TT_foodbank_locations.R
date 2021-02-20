@@ -10,7 +10,7 @@ library(leaflet)
 # It also inspects the foodbank postcode and region data 
 # supplied  and concludes that there are errors in the 
 # region data. There are duplicate records for a number of 
-# foodbanks which contain conflicting region information. 
+# foodbanks which contain conflicting region or country information. 
 #
 #####
 
