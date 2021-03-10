@@ -2,7 +2,7 @@ library(tidyverse)
 library(readxl)
 library(stringr)
 
-# A Quick Look at Trussell Trust foobank data for 2019 2020 from Dave Massey
+# A Quick Look at Trussell Trust foodbank data for 2019 2020 from Dave Massey
 
 foodbanks<- read_csv('./data/Total Fed By Fiscal Year (2).csv' )
 colnames(foodbanks)<- c("foodbank", "year", "vouchers")
