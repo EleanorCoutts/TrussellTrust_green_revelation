@@ -12,7 +12,7 @@ library(sqldf)
 #create a subset of the postcode lat and long data for Trussell Trust foodbank postcodes
 names(FBpostcodes)[names(FBpostcodes)=="Post.Code"] <- "Postcode"
 pclist <- as.list(unique(FBpostcodes$Postcode))
-datamap <- subset(Df_UK, Df_UK$Postcode %in% pclist, select= c("Postcode","Latitude","Longitude","District"))  
+datamap <- subset(Df_UK, Df_UK$Postcode %in% pclist, select= c("Postcode","Latitude","Longitude","District","Country","Index.of.Multiple.Deprivation"))  
 
 #Merge the postcode lat and long data with the FB postcodes data
 FBpostcodesLL <- merge(FBpostcodes,datamap,"Postcode",all=TRUE)
@@ -20,10 +20,12 @@ FBpostcodesLL <- merge(FBpostcodes,datamap,"Postcode",all=TRUE)
 #Merge FBPostcodesLL with TrussellTrust foodbank voucher data
 FBpostcodesLL$foodbank <- str_remove(FBpostcodesLL$Name, " Foodbank")
 foodBankUsage <- merge(foodbanks, FBpostcodesLL)
+colnames(foodBankUsage)[colnames(foodBankUsage)=="Index.of.Multiple.Deprivation"]<- "multDepIndex"
 
 #Create panel dataset by LAD
-LADPanel <- sqldf("select District, year, sum(vouchers) from foodBankUsage group by District, year")
+LADPanel <- sqldf("select District, year, Country, MultDepIndex, sum(vouchers) from foodBankUsage group by District, year")
 colnames(LADPanel)[colnames(LADPanel)=="District"] <- "LAD"
+
 
 ###Add explanatory variables
 
