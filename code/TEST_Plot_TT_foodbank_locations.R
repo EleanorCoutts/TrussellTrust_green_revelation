@@ -2,6 +2,7 @@ library(dplyr)
 library(sqldf)
 library(tidyverse)
 library(leaflet)
+library(readxl)
 
 #####
 # This is a script to plot the TT food bank

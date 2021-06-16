@@ -18,9 +18,9 @@ FBpostcodesLL$foodbank <- str_remove(FBpostcodesLL$Name, " Foodbank")
 foodBankUsage <- merge(foodbanks, FBpostcodesLL)
 
 LAD_panel <- foodBankUsage %>%
-  select(admin_district, year, quarter, vouchers,foodbank) %>%
+  select(admin_district, year, quarter, vouchers,foodbank, country) %>%
   arrange(foodbank,year,quarter) %>%
-  group_by(admin_district,year,quarter) %>%
+  group_by(admin_district,year,quarter,country) %>%
   summarise(sum_vouchers = sum(vouchers)) %>%
   rename(LAD = admin_district)
 
