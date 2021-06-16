@@ -17,24 +17,40 @@ FBpostcodesLL <- merge(FBpostcodes,fullbulk_df,"postcode",all=TRUE)
 FBpostcodesLL$foodbank <- str_remove(FBpostcodesLL$Name, " Foodbank")
 foodBankUsage <- merge(foodbanks, FBpostcodesLL)
 
-#Create panel dataset by LAD
-LADPanel <- sqldf("select admin_district, year, quarter, country, sum(vouchers) from foodBankUsage group by admin_district, year, quarter")
-colnames(LADPanel)[colnames(LADPanel)=="admin_district"] <- "LAD"
+LAD_panel <- foodBankUsage %>%
+  select(admin_district, year, quarter, vouchers,foodbank) %>%
+  arrange(foodbank,year,quarter) %>%
+  group_by(admin_district,year,quarter) %>%
+  summarise(sum_vouchers = sum(vouchers)) %>%
+  rename(LAD = admin_district)
+
+#Group all explanatory dataframes into a list
+#The names are the names of the column the data (i.e. variable of concern) is stored in
+explanatory_vars <- c(StatXplore_data, 
+                      list('EstUnemploymentRate' = unemployment, 
+                           'workLimitingDisabled' = workLimitingDisabled))
+
+#For now, just use most recent data for each of the variables. This may mean they are not all the same
+#time period.
+explanatory_df_list <- list()
+date_list <- list()
+for(e in names(explanatory_vars)){
+  print(e)
+  date_to_filter = max(explanatory_vars[[e]]$date)
+  date_list[e] <- as.character(date_to_filter)
+  new <- explanatory_vars[[e]] %>%
+    filter(date == date_to_filter) %>%
+    mutate(LAD2 = LAD) %>%
+    mutate(LAD = gsub('/(.*)',"",LAD2)) %>%
+    mutate(LAD = str_trim(LAD)) %>%
+    select(c('LAD',e)) 
+  explanatory_df_list <- c(explanatory_df_list, list(new))
+}
+#Loop through merging in 1 at a time
+explanatory_panel <- data.frame(LAD = character())
+for(df in explanatory_df_list){
+  explanatory_panel <- full_join(explanatory_panel, df)
+}
 
 
-###Add explanatory variables
-
-unemploymentSub <- subset(unemployment, unemployment$date=="2019-12" & unemployment$item_name=="Unemployment rate (model based)")[c("geography_name","obs_value")]
-unemploymentSub$year <- "2019"
-colnames(unemploymentSub)[colnames(unemploymentSub)=="geography_name"] <- "LAD"
-colnames(unemploymentSub)[colnames(unemploymentSub)=="obs_value"] <- "EstUnemploymentRate"
-
-workLimitingDisabledSub <-subset(workLimitingDisabled, workLimitingDisabled$date=="2019-12")[c("geography_name","obs_value")]
-workLimitingDisabledSub$year <- "2019"
-colnames(workLimitingDisabledSub)[colnames(workLimitingDisabledSub)=="geography_name"] <- "LAD"
-colnames(workLimitingDisabledSub)[colnames(workLimitingDisabledSub)=="obs_value"] <- "workLimitingDisabled"
-
-explanatoryVar <- merge(unemploymentSub,workLimitingDisabledSub,by=c("LAD","year"))
-
-LADPanelAll <- merge(LADPanel,explanatoryVar,by=c("LAD","year"),all=TRUE)
-
+LAD_panelALL <- merge(LAD_panel, explanatory_panel, by = "LAD", all = TRUE)

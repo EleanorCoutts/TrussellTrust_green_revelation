@@ -24,6 +24,14 @@ URL_TABLE <- "https://stat-xplore.dwp.gov.uk/webapi/rest/v1/table"
 #' the table you want, and in the top right hand corner there's a dropdown box 
 #' next to download. Choose the 'Open Data API Query (.json)' option and click go.
 #' 
+#' The downloaded JSON query will have the date shown on the table you viewed specified.
+#' Remove this to get all dates (i.e. open up json file and remove the line that
+#' specifies dates. e.g.
+#' "map" : [ [ "...:202102..." ] ],
+#' turns into 
+#' "map" : [],
+#' )
+#' 
 #' To get an API key you need a log-in on the Stat-Xplore website. On home page
 #' click on 3 dots in right hand corner, choose Account, under Open Data API Access
 #' click copy to copy the key to the clipboard. Paste into a .txt document, and 
@@ -70,10 +78,16 @@ request_table <- function(query, api_key) {
       headers,
       body = query,
       encode = "form",
-      timeout = 60)},
+      timeout = 5000)},
     error = function(c) {
       stop(paste("Error message:",c,"Could not connect to Stat-Xplore: the server may be down"))
     })
+  
+  response_headers <- headers(response)
+  num_queries_remaining <- response_headers$`x-ratelimit-remaining-table`
+  queries_reset_time <- as.POSIXct(as.numeric(response$headers$`X-RateLimit-Reset`)/1000, origin="1970-01-01")
+  print(paste('Stat-Xplore_API has',num_queries_remaining,
+              'queries remaining, reset due at',queries_reset_time))
   
   # Extract the text
   response_text <- httr::content(response, as = "text", encoding = "utf-8")
@@ -158,7 +172,48 @@ extract_items_df <- function(items) {
   do.call(tidyr::expand_grid, items)
 }
 
-
-query_path <- 'code/sample_query.json'
-api_key_path <- 'code/Stat-Xplore_API_key.txt'
-a <- get_statxplore_api_results(query_path, api_key_path)
+StatXplore_date_conversion <- function(df){
+  new <- df
+  
+  if('Month' %in% names(df)){
+    
+   # new <- new %>%
+   #  separate(Month, into = c('month_numeric', 'month_text'), sep = 6, remove=FALSE) %>%
+   #  #Turn YYYYmm format into YYYYmmdd format by setting dd to the first of each month
+   #  mutate(month_numeric = paste(month_numeric,'01', sep = '')) %>%
+   #  mutate(date = as.Date(month_numeric, format='%Y%m%d'))
+    
+    try_formats = c('%Y%m (%b-%y) %d', '%B %Y %d') 
+    #These are possible formats the date is in, including day at end which must be added in
+    solved <- FALSE
+    for(format in try_formats){
+      temp <- new %>%
+        mutate(Month_day = paste(Month, '01')) %>% #Add in the day
+        mutate(date = as.Date(Month_day, format = format))
+      
+      if(!all(is.na(temp$date))) {
+        solved <- TRUE
+        new <- temp
+        break
+      }
+    } 
+    if(!(solved)){
+      print('Could not understand Month format')
+      warning('Month format not understood so date conversion unsuccesful')
+    }
+   
+   
+   } else if ('Quarter' %in% names(df)){
+     
+     new <- new %>%
+       mutate(Quarter_day = paste0('01-',Quarter), .keep='all') %>%
+       mutate(date = as.Date(Quarter_day, format = '%d-%b-%y', .keep='all'))
+     
+   } else {
+      print('No month or quarter in the dataframe') #Printing as well as warning helps with debugging
+      warning("No 'Month' or 'Quarter' column in dataframe, therefore date conversion unsuccesful")
+    
+   
+    }
+  new
+}
