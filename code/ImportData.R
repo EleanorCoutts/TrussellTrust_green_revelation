@@ -63,28 +63,55 @@ rm(bulk_df)
 
 ###NOMIS DATA
 
-#Note that currently the time is hardcoded, so won't give most up-to-date data
+start_date <- "2015-01" #The earliest date to get data for in the format YYYY-mm
+end_date <- format(Sys.Date(), '%Y-%m')
+date_range <- paste0(start_date, '-' ,end_date)
+
 #Read in ONS model-based estimate values of unemployment from Nomis by LAD
-unemployment <- nomis_get_data(id = "NM_127_1", time = "2019-01-2020-12", 
-                    geography = "TYPE434", measures="20100", tidy=TRUE) %>%
-  rename(LAD = geography_name) %>%
-  rename(EstUnemploymentRate = obs_value) %>%
-  filter(item_name == "Unemployment rate (model based)") %>%
-  mutate(date = paste0(date,'-01')) %>% #Add a day to the date
-  mutate(date = as.Date(date, format='%Y-%m-%d')) %>%
-  as.data.frame() #Naturally they are tibbles
 
-#Read in work-limited disabled from Nomis by LAD
+#The following list is a names list of variables to be read from Nomis
+#the name of each list must be an approriate column name for the data: no spaces, no special characters
+#In each list there must be the following items:
+# - ID to pass to the nomis_get_data function
+# - item : This is the item to retrieve, an integer. Use nomis_codelist(id, 'item') 
+#          to get a list of options (look at id column). Can be NULL.
+# - cell : Alternative to item - which to use depends on the dataset. Use
+#          nomis_codelist(id, 'cell') to get the options (look at id column)
+# - Description : This is a fuller description that is human readable - it will 
+#                 appear on axes labels for example
+# - Unit : The unit. Appears on axes labels. Can be '' if dimensionless.
+nomis_data_list <- list(
+'unemployment' = list('nomisr_id' = "NM_127_1", 
+                      'item' = 2, 
+                      'description' = "Unemployment rate",
+                      'unit' = '', 
+                      'cell' = NULL),
+'workLimitingDisabled' = list('nomisr_id' = "NM_17_1", 
+                              'item' = NULL, 
+                              'description' = "Work-limiting disabled - All",
+                              'unit' = '',
+                              'cell' = "405278465")
+)
 
-workLimitingDisabled <- nomis_get_data(id = "NM_17_1", time = "2019-01-2020-12", 
-                               geography = "TYPE434", cell = "405278465",
-                               measures="20100", tidy=TRUE) %>%
-  rename(LAD = geography_name) %>%
-  rename(workLimitingDisabled = obs_value) %>%
-  mutate(date = paste0(date,'-01')) %>% #Add a day to the date
-  mutate(date = as.Date(date, format='%Y-%m-%d')) %>%
-  as.data.frame() 
-  
+
+Nomis_data <- list()
+for(nomis_name in names(nomis_data_list)){
+  print(nomis_name)
+  info <- nomis_data_list[[nomis_name]]
+  df <- nomis_get_data(id = info$nomisr_id, time = date_range, cell = info$cell, 
+                        item = info$item, geography = "TYPE434", measures="20100", 
+                        tidy=TRUE) %>%
+     rename(LAD = geography_name) %>%
+     rename(!!nomis_name := obs_value) %>%
+     mutate(date = paste0(date,'-01')) %>% #Add a day to the date
+     mutate(date = as.Date(date, format='%Y-%m-%d')) %>%
+     select(c('date', 'date_name', 'date_code', 'LAD', 'geography', nomis_name)) %>%
+     as.data.frame() #Otherwise they are tibbles
+     
+    
+  Nomis_data[[nomis_name]] <- df
+}
+
 
 
 ### Stat-Xplore Data
@@ -94,25 +121,85 @@ workLimitingDisabled <- nomis_get_data(id = "NM_17_1", time = "2019-01-2020-12",
 
 api_key_path <- 'code/Stat-Xplore_API_key.txt'
 
-list_queries <- list('housing_beneift' = 'code/Stat-Xplore_queries/Housing_benefit.json', 
-                  'carers_entitlement' = 'code/Stat-Xplore_queries/Carers_allowance_entitlement.json',
-                  'carers_payment' = 'code/Stat-Xplore_queries/Carers_allowance_payment.json',
-                  'Households_UC' = 'code/Stat-Xplore_queries/Households_UC.json',
-                  'State_pension' = 'code/Stat-Xplore_queries/State_pension.json')
+StatXplore_data_list <- list('housing_benefit_claimants' = 
+                       list('query_file' = 'code/Stat-Xplore_queries/Housing_benefit.json',
+                            'column' = 'Housing Benefit Claimants',
+                            'description' = 'Number of Housing Benefit Claimants',
+                            'unit' = ''),
+                     
+                     'Mean_Housing_benefit_award_weekly' = 
+                       list('query_file' = 'code/Stat-Xplore_queries/Housing_benefit.json',
+                            'column' = 'Mean of Weekly Award Amount',
+                            'description' = 'Mean weekly housing benefit award',
+                            'unit' = '£'),
+                     
+                     'carers_entitlement' = list(
+                       'query_file' = 'code/Stat-Xplore_queries/Carers_allowance_entitlement.json', 
+                       'column' = "CA (Entitled) - 2011 Geographies",
+                       'description' = "Number of people entitled to carer's allowance",
+                       'unit' = ""
+                     ),
+                     
+                     'carers_payment' = list(
+                       'query_file' = 'code/Stat-Xplore_queries/Carers_allowance_payment.json',
+                       'column' = "CA (In Payment) - 2011 Geographies",
+                       'description' = "Number of people in receipt of carer's allowance",
+                       'unit' = ''
+                     ),
+                     
+                     'Households_UC' = list(
+                       'query_file' = 'code/Stat-Xplore_queries/Households_UC.json',
+                       'column' = "Households on Universal Credit",
+                       'description' = 'Households on Universal Credit',
+                       'unit' = ''),
+                     
+                     'State_pension' = list(
+                       'query_file' = 'code/Stat-Xplore_queries/State_pension.json',
+                       'column' = "State Pension caseload - 2011 Geographies",
+                       'description' = 'State pension caseload',
+                       'unit' = ''
+                     )
+                     )
+
 #This is a list of filenames of the json queries
 StatXplore_data <- list()
 #Get data from API
 
-for(sx_name in names(list_queries)){
-  print(sx_name)
-  res <- get_statxplore_api_results(list_queries[[sx_name]], api_key_path)
+for(sx_name in names(StatXplore_data_list)){
+  info <- StatXplore_data_list[[sx_name]]
+  #The StatXplore API can sometimes return errors - the reason for this is unknown.
+  #Make several attempts for each dataset via a try loop.
+  
+  #attempts <- 1
+  for(attempts in 1:6){
+    #try()
+    print(paste('Attempt',attempts,'for',sx_name))
+    tryCatch({
+      res <- get_statxplore_api_results(info$query_file, api_key_path)
+    }, 
+    error = function(cond){
+      print(paste('Attempt ',attempts,'failed with error:',cond))
+      return(NULL)
+      }
+      )
+    
+    #attempts <- attempts + 1
+    if(!(is.null(try))){
+      #Success
+      break
+    }
+    }
+  
+  
   #res is a temporary variable, overwritten each time
   print(names(res$dfs))
-  for(df_name in names(res$dfs)){
-    StatXplore_data[[df_name]] <- res$dfs[[df_name]] %>%
-      as.data.frame() %>%
-      StatXplore_date_conversion() %>%
-      rename(LAD = `National - Regional - LA - OAs`)
-  }
+
+  StatXplore_data[[sx_name]] <- res$dfs[[info$column]] %>%
+    as.data.frame() %>%
+    StatXplore_date_conversion() %>%
+    rename(LAD = `National - Regional - LA - OAs`) %>%
+    rename(!!sx_name := .data[[info$column]]) %>%
+    filter(LAD != 'Total')
+
 }
 
