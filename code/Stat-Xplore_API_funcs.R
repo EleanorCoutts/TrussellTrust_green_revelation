@@ -52,7 +52,8 @@ get_statxplore_api_results <- function(query_json_file, api_key_filename){
   
   response_json <- request_table(query, api_key)
   
-  extract_results(response_json)
+  r <- extract_results(response_json)
+  add_codes_for_field(r, "National - Regional - LA - OAs", colname = "LAD_code")
 }
 
 #' Send an http request with a query and return the response
@@ -78,7 +79,7 @@ request_table <- function(query, api_key) {
       headers,
       body = query,
       encode = "form",
-      timeout = 5000)},
+      timeout = 120)},
     error = function(c) {
       stop(paste("Error message:",c,"Could not connect to Stat-Xplore: the server may be down"))
     })
@@ -217,3 +218,80 @@ StatXplore_date_conversion <- function(df){
     }
   new
 }
+
+#' Extract the codes for a given field and add them to the given dataframe
+#'
+#' add_codes_for_field adds a column containing the codes for a given
+#' field to the dataframes contained in the given results. The codes are
+#' derived from the uris: specifically they are the last item in uri string
+#' delimited with a colon. Where fields contain items for totals their uris do
+#' not contain a corresponding uri for the total. This function handles that
+#' case by creating a dummy code for the total (called "Total").
+#'
+#' @param results The results list.
+#' @param field The name of the field for which to extract codes.
+#' @param colname The name of the new column which will contain the codes.
+#' @return A copy of the results with a code column added to each dataframe.
+#' @export
+add_codes_for_field <- function(results, field, colname) {
+  
+  # Check the results list has the expected names
+  expected_names <- c("measures", "fields", "items", "uris", "dfs")
+  if (! all(expected_names %in% names(results))) {
+    stop("These results do not have the expected names")
+  }
+  
+  # Check the results list has the expected types
+  expected_types <- c("character", "character", "list", "list", "list" )
+  
+  types_match <- purrr::imap_lgl(expected_names, function(name, i) {
+    class(results[[name]]) == expected_types[i]
+  })
+  
+  if (! all(types_match)) {
+    stop("These results do not have the expected types")
+  }
+  
+  # Check the requested field exists
+  if (! field %in% results$fields) {
+    stop(stringr::str_glue(
+      "These results do not contain a field called \"{field}\""))
+  }
+  
+  # Check the new column name doesn't exist in the results dataframes
+  if (any(purrr::map_lgl(results$dfs, ~ colname %in% colnames(.)))) {
+    stop(stringr::str_glue(
+      "These results already contain a column called \"{colname}\""))
+  }
+  
+  # Extract the codes from the uris
+  uri_components <- stringr::str_split(results$uris[[field]], ":")
+  codes <- purrr::map_chr(uri_components, ~ .[length(.)])
+  
+  # Add pseudo code for the "Total" row if necessary
+  if (length(codes) != length(results$items[[field]])) {
+    if (length(codes) == length(results$items[[field]]) - 1) {
+      codes <- c(codes, "Total")
+    } else {
+      stop("Unable to add codes: cannot match items with uris")
+    }
+  }
+  
+  # Create lookup
+  lookup <- tibble::tibble(
+    labels = results$items[[field]],
+    !!colname := codes)
+  
+  # Add the codes to each dataframe in the results list
+  results$dfs <- purrr::map(results$dfs, function(df) {
+    dplyr::left_join(df, lookup, by = stats::setNames(c("labels"), field))
+  })
+  
+  # Return the results
+  results
+}
+
+
+api_key_path <- 'code/Stat-Xplore_API_key.txt'
+query_file <- 'code/Stat-Xplore_queries/Housing_benefit.json'
+res <- get_statxplore_api_results(query_file, api_key_path)

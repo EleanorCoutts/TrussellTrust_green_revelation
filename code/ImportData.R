@@ -15,12 +15,17 @@ getwd()
 
 ###TRUSSELL TRUST DATA
 
-# Read in Trussell Trust foodbank data by quarter/FY from David Massey
+# Read in Trussell Trust foodbank data by quarter/FY
 foodbanks <- read.csv('./data/Total Feb each FB each quarter, calendar year.csv')
 colnames(foodbanks)<- c("foodbank", "year", "quarter", "vouchers")
 
-# Read in Trussell Trust foodbank location data from David Massey
+# Read in Trussell Trust foodbank location data
 FBpostcodes <- read_excel('./data/FB Postcodes.xlsx',.name_repair = "universal") 
+
+### Other locally saved data
+
+#English indeices of multipe dprivation, summarised by local authority
+IMD_LA_Eng <- "./data/File_10_-_IoD2019_Local_Authority_District_Summaries__lower-tier__.xlsx"
 
 
 ###MAP DATA
@@ -31,8 +36,14 @@ pc_list <- as.list(FBpostcodes[1:100,"Post.Code"])
 names(pc_list) <- c("postcodes")
 bulk_lookup_result <- bulk_postcode_lookup(pc_list)
 bulk_list <- lapply(bulk_lookup_result, "[[", 2)
-bulk_df <- map_dfr(bulk_list,`[`,c("postcode", "admin_district", "country",
-                                   "longitude", "latitude"))
+bulk_list_codes <- lapply(bulk_list, function(i) list(
+  admin_district = i$admin_district, admin_district_code = i$codes$admin_district, 
+  postcode = i$postcode, country = i$country, longitude = i$longitude, latitude = i$latitude
+))
+
+bulk_df <- map_dfr(bulk_list_codes,`[`,c("postcode", "admin_district", "country",
+                                   "longitude", "latitude", "admin_district_code"))
+
 
 #Get data for the remaining postcodes in the FBpostcodes data frame and combine
 #all postcode data into a single dataframe
@@ -49,8 +60,13 @@ for (i in 1:floor(numPostcodes/100)){
   names(pc_list) <- c("postcodes")
   bulk_lookup_result <- bulk_postcode_lookup(pc_list)
   bulk_list <- lapply(bulk_lookup_result, "[[", 2)
-  bulk_df <- map_dfr(bulk_list,`[`,c("postcode", "admin_district", "country",
-                                     "longitude", "latitude"))
+  bulk_list_codes <- lapply(bulk_list, function(i) list(
+    admin_district = i$admin_district, admin_district_code = i$codes$admin_district, 
+    postcode = i$postcode, country = i$country, longitude = i$longitude, latitude = i$latitude
+  ))
+  bulk_df <- map_dfr(bulk_list_codes,`[`,c("postcode", "admin_district", "country",
+                                           "longitude", "latitude", "admin_district_code"))
+  
   fullbulk_df <- rbind(fullbulk_df,bulk_df)
 }
 
@@ -58,6 +74,7 @@ for (i in 1:floor(numPostcodes/100)){
 rm(bulk_lookup_result)
 rm(bulk_list)
 rm(bulk_df)
+rm(bulk_list_codes)
 
 
 
@@ -67,52 +84,53 @@ start_date <- "2015-01" #The earliest date to get data for in the format YYYY-mm
 end_date <- format(Sys.Date(), '%Y-%m')
 date_range <- paste0(start_date, '-' ,end_date)
 
-#Read in ONS model-based estimate values of unemployment from Nomis by LAD
 
-#The following list is a names list of variables to be read from Nomis
-#the name of each list must be an approriate column name for the data: no spaces, no special characters
-#In each list there must be the following items:
-# - ID to pass to the nomis_get_data function
-# - item : This is the item to retrieve, an integer. Use nomis_codelist(id, 'item') 
-#          to get a list of options (look at id column). Can be NULL.
-# - cell : Alternative to item - which to use depends on the dataset. Use
-#          nomis_codelist(id, 'cell') to get the options (look at id column)
-# - Description : This is a fuller description that is human readable - it will 
-#                 appear on axes labels for example
-# - Unit : The unit. Appears on axes labels. Can be '' if dimensionless.
-nomis_data_list <- list(
-'unemployment' = list('nomisr_id' = "NM_127_1", 
-                      'item' = 2, 
-                      'description' = "Unemployment rate",
-                      'unit' = '', 
-                      'cell' = NULL),
-'workLimitingDisabled' = list('nomisr_id' = "NM_17_1", 
-                              'item' = NULL, 
-                              'description' = "Work-limiting disabled - All",
-                              'unit' = '',
-                              'cell' = "405278465")
+nomis_data_list <- list( 
+  unemployment = list(description = "Unemployment rate", source = "Nomis", unit = '%',
+                      params = list(id = "NM_127_1", item = 2)),
+  workLimitingDisabled = list(description = "Work-limiting disabled - All",
+                              source = "Nomis", unit = '',
+                              params = list(id = "NM_17_1", cell = "405278465")),
+  longTermSick = list(description = "Long term sick", source = "Nomis", unit = "",
+                      params = list(id = "NM_17_1", cell = "404819713")),
+  jobsDensity = list(description = 'Jobs density', source = "Nomis", unit = "",
+                     params = list(id = "NM_57_1", item = "3")),
+  loneParentHouseholds = list(description = 'Lone parent households', 
+                              source = "Nomis", unit = "",
+                              params = list(id = "NM_137_1", households_children = "1",
+                                            eastatus = "0", depchild = "0",
+                                            housetype = "1"))
+  
 )
-
 
 Nomis_data <- list()
 for(nomis_name in names(nomis_data_list)){
   print(nomis_name)
   info <- nomis_data_list[[nomis_name]]
-  df <- nomis_get_data(id = info$nomisr_id, time = date_range, cell = info$cell, 
-                        item = info$item, geography = "TYPE434", measures="20100", 
-                        tidy=TRUE) %>%
-     rename(LAD = geography_name) %>%
-     rename(!!nomis_name := obs_value) %>%
-     mutate(date = paste0(date,'-01')) %>% #Add a day to the date
-     mutate(date = as.Date(date, format='%Y-%m-%d')) %>%
-     select(c('date', 'date_name', 'date_code', 'LAD', 'geography', nomis_name)) %>%
-     as.data.frame() #Otherwise they are tibbles
-     
-    
+  
+  df <- do.call("nomis_get_data", c(list(time = date_range, geography = "TYPE434", 
+                                       measures="20100", tidy=TRUE), 
+                                    nomis_data_list[[nomis_name]]$params)) %>%
+    rename(LAD = geography_name, LAD_code = geography_code) %>%
+    rename(!!nomis_name := obs_value) #%>%
+  
+  if(grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", df$date[1])){
+    #Date is in YYYY-MM-DD format - no action needed
+  } else if(grepl("^[0-9]{4}-[0-9]{2}$", df$date[1])){
+    #Date is in YYYY-MM format - add in day (DD)
+    df <- df %>% mutate(date = paste0(date,'-01')) 
+  } else if(grepl("^[0-9]{4}$", df$date[1])){
+    #Date is in YYYY format, as in month and day (MM-DD)
+    df <- df %>% mutate(date = paste0(date,'-01-01'))
+  }
+
+  df <- df %>%
+    mutate(date = as.Date(date, format='%Y-%m-%d')) %>%
+    select(c('date', 'date_name', 'date_code', 'LAD', 'geography', nomis_name, 'LAD_code')) %>%
+    as.data.frame() #Otherwise they are tibbles
+  
   Nomis_data[[nomis_name]] <- df
-}
-
-
+  }
 
 ### Stat-Xplore Data
 #This requires a file containing key for StatXplore API, and JSON queries to be saved.
@@ -125,39 +143,45 @@ StatXplore_data_list <- list('housing_benefit_claimants' =
                        list('query_file' = 'code/Stat-Xplore_queries/Housing_benefit.json',
                             'column' = 'Housing Benefit Claimants',
                             'description' = 'Number of Housing Benefit Claimants',
-                            'unit' = ''),
+                            'unit' = '',
+                            'source' = 'StatXplore'),
                      
                      'Mean_Housing_benefit_award_weekly' = 
                        list('query_file' = 'code/Stat-Xplore_queries/Housing_benefit.json',
                             'column' = 'Mean of Weekly Award Amount',
                             'description' = 'Mean weekly housing benefit award',
-                            'unit' = '£'),
+                            'unit' = "\u00A3",
+                            'source' = 'StatXplore'), #£ is U+00A3 in unicode
                      
                      'carers_entitlement' = list(
                        'query_file' = 'code/Stat-Xplore_queries/Carers_allowance_entitlement.json', 
                        'column' = "CA (Entitled) - 2011 Geographies",
                        'description' = "Number of people entitled to carer's allowance",
-                       'unit' = ""
+                       'unit' = "",
+                       'source' = 'StatXplore'
                      ),
                      
                      'carers_payment' = list(
                        'query_file' = 'code/Stat-Xplore_queries/Carers_allowance_payment.json',
                        'column' = "CA (In Payment) - 2011 Geographies",
                        'description' = "Number of people in receipt of carer's allowance",
-                       'unit' = ''
+                       'unit' = '',
+                       'source' = 'StatXplore'
                      ),
                      
                      'Households_UC' = list(
                        'query_file' = 'code/Stat-Xplore_queries/Households_UC.json',
                        'column' = "Households on Universal Credit",
                        'description' = 'Households on Universal Credit',
-                       'unit' = ''),
+                       'unit' = '',
+                       'source' = 'StatXplore'),
                      
                      'State_pension' = list(
                        'query_file' = 'code/Stat-Xplore_queries/State_pension.json',
                        'column' = "State Pension caseload - 2011 Geographies",
                        'description' = 'State pension caseload',
-                       'unit' = ''
+                       'unit' = '',
+                       'source' = 'StatXplore'
                      )
                      )
 
@@ -199,7 +223,7 @@ for(sx_name in names(StatXplore_data_list)){
     StatXplore_date_conversion() %>%
     rename(LAD = `National - Regional - LA - OAs`) %>%
     rename(!!sx_name := .data[[info$column]]) %>%
-    filter(LAD != 'Total')
+    filter(LAD != 'Total', LAD != 'Abroad')
 
 }
 

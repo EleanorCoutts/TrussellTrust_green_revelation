@@ -38,7 +38,8 @@ Plot_bubble_interactive <- function(data, x_axis, y_axis,
                                     short_x_name = NULL, short_y_name = NULL,
                                     pre_x_unit = '', pre_y_unit = '',
                                     post_x_unit = '', post_y_unit = '', 
-                                    limits=NULL){
+                                    limits=NULL, x_log = FALSE, y_log = FALSE, 
+                                    annotation = ''){
   
   #country to colour mapping
   colours = c('England' = 'red', 'Wales' = 'green', 'Scotland' = 'Blue')
@@ -48,6 +49,14 @@ Plot_bubble_interactive <- function(data, x_axis, y_axis,
   if(is.null(y_axis_name)){y_axis_name = y_axis}
   if(is.null(short_x_name)){short_x_name = x_axis_name}
   if(is.null(short_y_name)){short_y_name = y_axis_name}
+  
+  #If using a logarithmic scale and limits are specified, change them.
+  if(x_log & !is.null(limits)){
+    limits$x <- log10(limits$x)
+  }
+  if(y_log & !is.null(limits)){
+    limits$y <- log10(limits$y)
+  }
   
   data <- data %>%
     mutate(x = .data[[x_axis]], y = .data[[y_axis]]) %>%
@@ -65,7 +74,17 @@ Plot_bubble_interactive <- function(data, x_axis, y_axis,
                  hoverinfo = 'text'
                 ) %>%
     layout(xaxis = list(title = x_axis_name),
-           yaxis = list(title = y_axis_name)) #%>%
+           yaxis = list(title = y_axis_name)) 
+  
+  if(x_log){
+    fig <- fig %>%
+      layout(xaxis = list(type = "log"))
+  }
+  
+  if(y_log){
+    fig <- fig %>%
+      layout(yaxis = list(type = "log"))
+  }
     
     if('selected_bool' %in% names(data)){
     
@@ -92,20 +111,36 @@ Plot_bubble_interactive <- function(data, x_axis, y_axis,
              yaxis = list(range = limits$y))
   }
   
+  fig <- fig %>% add_annotations(
+    x= 0.05,
+    y= 0.95,
+    xref = "paper",
+    yref = "paper",
+    text = annotation,
+    showarrow = F,
+    xanchor = 'left'
+  )
+  
   fig
   
 }
-
+# 
 # test_date = as.Date('2020-01-01')
 # test <- create_panel_dataset(LAD_panel, explanatory_vars,
 #                        explanatory_metadata, test_date)$panel_dataset
 # 
-# selected_bool <- rep(FALSE, nrow(test))
-# selected_bool[c(1,2,3)] <- TRUE
-# test$selected_bool <- selected_bool
-#  
+# test$selected_bool <- FALSE
+# 
+# #xlims <- test$unemployment
+# xlims <- c(0.9*min(test$unemployment), 1.1*max(test$unemployment))
+# ylims <- c(0.9*min(test$unemployment), 1.1*max(test$workLimitingDisabled))
+# 
+# lims <- list(x = xlims, y = ylims)
+# 
 # p <- Plot_bubble_interactive(test,
-#                         x_axis = "unemployment", y_axis = "workLimitingDisabled")
+#                         x_axis = "unemployment", y_axis = "workLimitingDisabled",
+#                         x_log = FALSE, y_log = TRUE, limits = lims, 
+#                         annotation = 'text goes here \n and here')
 # 
 # p
 

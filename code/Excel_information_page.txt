@@ -1,0 +1,18 @@
+This workbook contains data on foodbank usage and a range of other variables.
+
+The foodbank data is the number of food parcels given out in a given local authority over a certain time period (usually a quarter). The value for the local authority is a sum from all foodbanks within that local authority.
+The foodbank data comes from locally saved data.
+
+A range of other variables are in each column. This is 'explanatory data' giving more information about the local authority in question (such as unemployment rates etc.) that may help understand understand the factors that drive foodbank usage.
+This data comes from a variety of sources. Some of it comes from web hosted API's, and some comes from locally saved data.
+
+The data also has a date associated with it. The timestep is typically 3 month intervals (i.e quarters). However not all data is available quarterly. Therefore to estimate the explanatory data for that time period, the data from the nearest available date where the data is available for has been used.
+For example: if data were published annually for one particular variable, 4 of the quarters would have the same data for that particular variable.
+If data is not published regularly, and is instead a one-off value, then this single value will be used across all date stamps.
+
+Missing data is shown as #N/A
+
+The local authority information comes from both the data sources, and the foodbank data. Every attempt has been made to match up the local authorities accurately, however as with any automated process this will not always be 100% accurate: one local authority may appear twice under slightly different names.
+Not all local authorities have foodbank data associated with it: if this is the case then the data for that local authority will be missing. This typically occurs if there is no Trussel Trust foodbank in that local authority.
+Data from Northern Ireland is not widely available in the data sources for explanatory variables. Therefore this is shown as missing data.
+
